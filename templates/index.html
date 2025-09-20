@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Fact Checker</title>
+  <style>
+    body {
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      margin: 40px;
+      background-color: #f9f9f9;
+      color: #333;
+    }
+    h1 { text-align: center; color: #2c3e50; }
+    input, button {
+      padding: 10px;
+      margin: 5px 0;
+      width: 80%;
+      max-width: 500px;
+      font-size: 16px;
+      border-radius: 6px;
+      border: 1px solid #ccc;
+    }
+    button {
+      cursor: pointer;
+      background-color: #3498db;
+      color: #fff;
+      border: none;
+      transition: background 0.3s;
+    }
+    button:hover { background-color: #2980b9; }
+
+    .result {
+      margin-top: 30px;
+      padding: 20px;
+      border-radius: 8px;
+      background-color: #fff;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+
+    .section { margin-bottom: 25px; }
+    .section h3 {
+      margin-bottom: 10px;
+      color: #2c3e50;
+      border-bottom: 1px solid #ccc;
+      padding-bottom: 4px;
+    }
+
+    .verdict {
+      padding: 15px;
+      border-radius: 8px;
+      font-weight: bold;
+      line-height: 1.5em;
+    }
+    .verdict.true { background-color: #d4edda; color: #155724; }
+    .verdict.false { background-color: #f8d7da; color: #721c24; }
+    .verdict.unverifiable { background-color: #e2e3e5; color: #6c757d; }
+
+    .evidence-item {
+      padding: 12px;
+      margin-bottom: 15px;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      background-color: #f4f4f4;
+    }
+    .evidence-item a {
+      display: inline-block;
+      margin-top: 5px;
+      font-size: 13px;
+      color: #3498db;
+      text-decoration: none;
+    }
+    .evidence-item a:hover { text-decoration: underline; }
+    .similarity {
+      font-size: 12px;
+      color: #555;
+      margin-top: 4px;
+    }
+  </style>
+</head>
+<body>
+  <h1>🔎 Fact Checker</h1>
+  <div style="text-align:center;">
+    <input type="text" id="claimInput" placeholder="Enter your claim here">
+    <br>
+    <button onclick="checkFact()">Check</button>
+  </div>
+
+  <div class="result" id="result"></div>
+
+  <script>
+    function parseVerdict(verdictText) {
+      // Default values
+      let classification = "UNVERIFIABLE";
+      let explanation = "";
+      let confidence = "";
+
+      // Extract classification
+      const classMatch = verdictText.match(/(TRUE|FALSE|UNVERIFIABLE)/i);
+      if (classMatch) classification = classMatch[0].toUpperCase();
+
+      // Extract confidence score (0-100)
+      const confMatch = verdictText.match(/confidence\s*[:=]?\s*(\d{1,3})/i);
+      if (confMatch) confidence = confMatch[1] + "%";
+
+      // Explanation = remaining text after removing classification & confidence
+      explanation = verdictText.replace(classMatch ? classMatch[0] : "", "")
+                               .replace(confMatch ? confMatch[0] : "", "")
+                               .trim();
+
+      return { classification, explanation, confidence };
+    }
+
+    async function checkFact() {
+      const claim = document.getElementById("claimInput").value;
+      if (!claim) return alert("Please enter a claim.");
+
+      document.getElementById("result").innerHTML = "<p>Checking...</p>";
+
+      try {
+        const response = await fetch("/factcheck", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ claim })
+        });
+
+        const data = await response.json();
+        if (data.error) {
+          document.getElementById("result").innerHTML = `<p style="color:red;">Error: ${data.error}</p>`;
+          return;
+        }
+
+        const verdictParsed = parseVerdict(data.verdict);
+        const verdictClass = verdictParsed.classification.toLowerCase();
+
+        let html = `<div class="section"><h3>Claim</h3><p>${data.claim}</p></div>`;
+
+        html += `<div class="section">
+                  <h3>Verdict</h3>
+                  <div class="verdict ${verdictClass}">
+                    <div><strong>Classification:</strong> ${verdictParsed.classification}</div>
+                    <div><strong>Explanation:</strong> ${verdictParsed.explanation}</div>
+                    <div><strong>Confidence Score:</strong> ${verdictParsed.confidence}</div>
+                  </div>
+                 </div>`;
+
+        html += `<div class="section"><h3>Evidence</h3>`;
+        if (data.evidence.length === 0) {
+          html += `<p>No evidence found.</p>`;
+        } else {
+          data.evidence.forEach(e => {
+            html += `<div class="evidence-item">
+                      <p>${e.text.substring(0, 300)}...</p>
+                      <a href="${e.url}" target="_blank">Read full article</a>
+                      <div class="similarity">Similarity: ${e.sim.toFixed(2)}</div>
+                    </div>`;
+          });
+        }
+        html += `</div>`;
+
+        document.getElementById("result").innerHTML = html;
+
+      } catch (err) {
+        document.getElementById("result").innerHTML = `<p style="color:red;">Error: ${err}</p>`;
+      }
+    }
+  </script>
+</body>
+</html>
